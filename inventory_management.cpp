@@ -4,6 +4,9 @@
 #include <string>
 #include <iomanip>
 #include <limits>
+#include <algorithm>  // For transform
+#include <cctype>     // For tolower
+#include <sstream>    // For string stream
 
 using namespace std;
 
@@ -24,6 +27,9 @@ public:
 
     // Pure virtual function to display item details (to be overridden by derived classes)
     virtual void display() const = 0;
+    
+    // Virtual function to get item details as string (for file operations)
+    virtual string getDetailsForFile() const = 0;
 
     // Getters
     int getId() const { return id; }
@@ -46,23 +52,34 @@ class Electronics : public InventoryItem {
     string brand;
     int warrantyMonths;
 
+    // Helper to format price with 2 decimal places
+    string formatPrice(double price) const {
+        stringstream ss;
+        ss << fixed << setprecision(2) << price;
+        return "$" + ss.str();
+    }
+
 public:
     Electronics(int id, string name, double price, int quantity, string brand, int warranty)
         : InventoryItem(id, name, price, quantity, "Electronics"), 
-          brand(brand), warrantyMonths(warranty) {}
+          brand(brand), warrantyMonths(max(0, warranty)) {}
 
     void display() const override {
         cout << left << setw(5) << id 
-             << setw(20) << name 
-             << setw(10) << "$" + to_string(price).substr(0, 5)
-             << setw(10) << quantity
+             << setw(25) << (name.length() > 23 ? name.substr(0, 20) + "..." : name) 
+             << setw(12) << formatPrice(price)
+             << setw(8) << quantity
              << setw(15) << type
-             << setw(15) << brand
-             << warrantyMonths << " months warranty" << endl;
+             << setw(20) << (brand.length() > 17 ? brand.substr(0, 15) + "..." : brand)
+             << warrantyMonths << " months" << endl;
     }
 
     string getAdditionalInfo() const override {
         return "Brand: " + brand + ", Warranty: " + to_string(warrantyMonths) + " months";
+    }
+    
+    string getDetailsForFile() const override {
+        return brand + "," + to_string(warrantyMonths);
     }
 };
 
@@ -71,23 +88,47 @@ class Grocery : public InventoryItem {
     string expiryDate;
     string category;
 
+    // Helper to format price with 2 decimal places
+    string formatPrice(double price) const {
+        stringstream ss;
+        ss << fixed << setprecision(2) << price;
+        return "$" + ss.str();
+    }
+
+    // Helper to validate date format (YYYY-MM-DD)
+    bool isValidDate(const string& date) const {
+        if (date.length() != 10) return false;
+        if (date[4] != '-' || date[7] != '-') return false;
+        // Basic check - in a real app, you'd want more thorough validation
+        return true;
+    }
+
 public:
     Grocery(int id, string name, double price, int quantity, string expiry, string category)
         : InventoryItem(id, name, price, quantity, "Grocery"),
-          expiryDate(expiry), category(category) {}
+          expiryDate(expiry), category(category) {
+        if (!isValidDate(expiry)) {
+            cerr << "Warning: Invalid date format for item " << id << ". Using default date.\n";
+            expiryDate = "2023-12-31";
+        }
+    }
 
     void display() const override {
         cout << left << setw(5) << id 
-             << setw(20) << name 
-             << setw(10) << "$" + to_string(price).substr(0, 5)
-             << setw(10) << quantity
+             << setw(25) << (name.length() > 23 ? name.substr(0, 20) + "..." : name)
+             << setw(12) << formatPrice(price)
+             << setw(8) << quantity
              << setw(15) << type
-             << setw(15) << category
-             << "Expires: " << expiryDate << endl;
+             << setw(20) << (category.length() > 17 ? category.substr(0, 15) + "..." : category)
+             << "Exp: " << expiryDate << endl;
     }
 
     string getAdditionalInfo() const override {
         return "Category: " + category + ", Expires: " + expiryDate;
+    }
+    
+    string getDetailsForFile() const override {
+        return expiryDate + "," + category;
     }
 };
 
@@ -109,30 +150,33 @@ private:
     }
 
     // Save inventory to file
-    void saveToFile() {
+    bool saveToFile() {
         ofstream outFile(dataFile);
-        if (!outFile) {
-            cerr << "Error: Could not open file for writing." << endl;
-            return;
+        if (!outFile.is_open()) {
+            cerr << "\nError: Could not open file '" << dataFile << "' for writing." << endl;
+            return false;
         }
 
+        bool success = true;
         for (const auto& item : inventory) {
-            outFile << item->getId() << ","
-                   << item->getType() << ","
-                   << item->getName() << ","
-                   << item->getPrice() << ","
-                   << item->getQuantity() << ",";
-            
-            // Save additional fields based on type
-            if (item->getType() == "Electronics") {
-                Electronics* e = dynamic_cast<Electronics*>(item);
-                outFile << e->getAdditionalInfo() << "\n";
-            } else if (item->getType() == "Grocery") {
-                Grocery* g = dynamic_cast<Grocery*>(item);
-                outFile << g->getAdditionalInfo() << "\n";
+            try {
+                outFile << item->getId() << ","
+                       << item->getType() << ","
+                       << item->getName() << ","
+                       << item->getPrice() << ","
+                       << item->getQuantity() << ","
+                       << item->getDetailsForFile() << "\n";
+            } catch (const exception& e) {
+                cerr << "Error saving item " << item->getId() << ": " << e.what() << endl;
+                success = false;
             }
         }
+        
         outFile.close();
+        if (success) {
+            cout << "\n✓ Inventory saved successfully!" << endl;
+        }
+        return success;
     }
 
     // Load inventory from file
@@ -184,7 +228,10 @@ private:
     // Clear all items from memory
     void clearInventory() {
         for (auto& item : inventory) {
-            delete item;
+            if (item != nullptr) {
+                delete item;
+                item = nullptr;
+            }
         }
         inventory.clear();
     }
@@ -199,19 +246,41 @@ public:
     }
 
     // Add a new item to inventory
-    void addItem(InventoryItem* item) {
+    bool addItem(InventoryItem* item) {
+        if (item == nullptr) {
+            cerr << "Error: Cannot add null item to inventory." << endl;
+            return false;
+        }
+        
+        // Check for duplicate IDs
+        if (findItemById(item->getId()) != nullptr) {
+            cerr << "Error: Item with ID " << item->getId() << " already exists." << endl;
+            delete item;
+            return false;
+        }
+        
         inventory.push_back(item);
-        saveToFile();
+        return saveToFile();
     }
 
     // Update item quantity
     bool updateStock(int id, int amount) {
         InventoryItem* item = findItemById(id);
         if (item) {
+            int newQuantity = item->getQuantity() + amount;
+            if (newQuantity < 0) {
+                cout << "\nWarning: Cannot have negative quantity. Operation cancelled." << endl;
+                return false;
+            }
+            
             item->updateStock(amount);
-            saveToFile();
-            return true;
+            bool success = saveToFile();
+            if (success) {
+                cout << "\n✓ Stock updated successfully! New quantity: " << newQuantity << endl;
+            }
+            return success;
         }
+        cout << "\nError: Item with ID " << id << " not found." << endl;
         return false;
     }
 
@@ -219,12 +288,17 @@ public:
     bool removeItem(int id) {
         for (auto it = inventory.begin(); it != inventory.end(); ++it) {
             if ((*it)->getId() == id) {
+                string itemName = (*it)->getName();
                 delete *it;
                 inventory.erase(it);
-                saveToFile();
-                return true;
+                bool success = saveToFile();
+                if (success) {
+                    cout << "\n✓ Item '" << itemName << "' (ID: " << id << ") has been removed." << endl;
+                }
+                return success;
             }
         }
+        cout << "\nError: Item with ID " << id << " not found." << endl;
         return false;
     }
 
@@ -289,191 +363,289 @@ public:
 
 // Function to clear input buffer
 void clearInput() {
-    cin.clear();
+    if (cin.fail()) {
+        cin.clear();
+    }
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
 }
 
+// Function to get a string input with validation
+string getStringInput(const string& prompt) {
+    string input;
+    while (true) {
+        cout << prompt;
+        getline(cin, input);
+        
+        // Trim leading/trailing whitespace
+        input.erase(0, input.find_first_not_of(" \t"));
+        input.erase(input.find_last_not_of(" \t") + 1);
+        
+        if (!input.empty()) {
+            return input;
+        }
+        cout << "Error: Input cannot be empty. Please try again.\n";
+    }
+}
+
+// Function to get a positive number input
+template<typename T>
+T getPositiveNumber(const string& prompt) {
+    T value;
+    while (true) {
+        cout << prompt;
+        if (cin >> value && value >= 0) {
+            clearInput();
+            return value;
+        }
+        cout << "Error: Please enter a valid positive number.\n";
+        clearInput();
+    }
+}
+
+// Function to get a yes/no response
+bool getYesNo(const string& prompt) {
+    char response;
+    while (true) {
+        cout << prompt << " (y/n): ";
+        cin >> response;
+        clearInput();
+        
+        response = tolower(response);
+        if (response == 'y' || response == 'n') {
+            return (response == 'y');
+        }
+        cout << "Please enter 'y' for yes or 'n' for no.\n";
+    }
+}
+
 // Function to display the main menu
-void displayMenu() {
-    cout << "\n\n=== INVENTORY MANAGEMENT SYSTEM ===" << endl;
+int displayMenu() {
+    int choice;
+    cout << "\n" << string(50, '=') << endl;
+    cout << "       INVENTORY MANAGEMENT SYSTEM" << endl;
+    cout << string(50, '=') << endl;
     cout << "1. Add New Item" << endl;
     cout << "2. Update Stock" << endl;
     cout << "3. Remove Item" << endl;
     cout << "4. View All Items" << endl;
     cout << "5. Generate Low Stock Report" << endl;
     cout << "6. Exit" << endl;
-    cout << "\nEnter your choice (1-6): ";
+    
+    while (true) {
+        cout << "\nEnter your choice (1-6): ";
+        if (cin >> choice && choice >= 1 && choice <= 6) {
+            clearInput();
+            return choice;
+        }
+        cout << "Invalid choice. Please enter a number between 1 and 6.\n";
+        clearInput();
+    }
 }
 
 // Function to add a new item
 void addNewItem(InventorySystem& invSys) {
-    cout << "\n=== ADD NEW ITEM ===" << endl;
-    cout << "1. Electronics" << endl;
-    cout << "2. Grocery" << endl;
-    cout << "3. Back to Main Menu" << endl;
-    cout << "\nSelect item type (1-3): ";
-    
-    int typeChoice;
-    cin >> typeChoice;
-    clearInput();
+    while (true) {
+        cout << "\n" << string(30, '=') << endl;
+        cout << "      ADD NEW ITEM" << endl;
+        cout << string(30, '=') << endl;
+        cout << "1. Add Electronics" << endl;
+        cout << "2. Add Grocery Item" << endl;
+        cout << "3. Back to Main Menu" << endl;
+        
+        int typeChoice;
+        cout << "\nSelect item type (1-3): ";
+        if (!(cin >> typeChoice) || typeChoice < 1 || typeChoice > 3) {
+            cout << "\nInvalid choice. Please enter a number between 1 and 3." << endl;
+            clearInput();
+            continue;
+        }
+        clearInput();
 
-    if (typeChoice == 3) return;
+        if (typeChoice == 3) return;
 
     string name, brand, expiry, category;
     double price;
     int quantity, warranty;
-
-    cout << "\nEnter item name: ";
-    getline(cin, name);
-
-    cout << "Enter price: $";
-    while (!(cin >> price) || price < 0) {
-        cout << "Invalid price. Please enter a positive number: $";
-        clearInput();
-    }
-    clearInput();
-
-    cout << "Enter quantity: ";
-    while (!(cin >> quantity) || quantity < 0) {
-        cout << "Invalid quantity. Please enter a positive integer: ";
-        clearInput();
-    }
-    clearInput();
-
+    
+    // Get common item details
+    name = getStringInput("\nEnter item name: ");
+    price = getPositiveNumber<double>("Enter price: $");
+    quantity = getPositiveNumber<int>("Enter initial quantity: ");
+    
     int id = invSys.getNextId();
     InventoryItem* newItem = nullptr;
+    bool success = false;
 
-    switch (typeChoice) {
-        case 1: // Electronics
-            cout << "Enter brand: ";
-            getline(cin, brand);
-            cout << "Enter warranty period (months): ";
-            while (!(cin >> warranty) || warranty < 0) {
-                cout << "Invalid warranty period. Please enter a positive integer: ";
-                clearInput();
+    try {
+        switch (typeChoice) {
+            case 1: { // Electronics
+                brand = getStringInput("Enter brand: ");
+                warranty = getPositiveNumber<int>("Enter warranty period (months): ");
+                newItem = new Electronics(id, name, price, quantity, brand, warranty);
+                break;
             }
-            clearInput();
-            newItem = new Electronics(id, name, price, quantity, brand, warranty);
-            break;
 
-        case 2: // Grocery
-            cout << "Enter category (e.g., Dairy, Snacks, etc.): ";
-            getline(cin, category);
-            cout << "Enter expiry date (YYYY-MM-DD): ";
-            getline(cin, expiry);
-            newItem = new Grocery(id, name, price, quantity, expiry, category);
-            break;
+            case 2: { // Grocery
+                category = getStringInput("Enter category (e.g., Dairy, Snacks, etc.): ");
+                
+                // Get and validate expiry date
+                while (true) {
+                    expiry = getStringInput("Enter expiry date (YYYY-MM-DD): ");
+                    if (expiry.length() == 10 && expiry[4] == '-' && expiry[7] == '-') {
+                        break;
+                    }
+                    cout << "Invalid date format. Please use YYYY-MM-DD format.\n";
+                }
+                
+                newItem = new Grocery(id, name, price, quantity, expiry, category);
+                break;
+            }
+            
+            default:
+                return; // Shouldn't happen due to previous validation
+        }
 
-        default:
-            cout << "Invalid choice. Returning to main menu." << endl;
-            return;
+        // Add the item to inventory
+        success = invSys.addItem(newItem);
+        if (success) {
+            cout << "\n✓ Item added successfully!" << endl;
+            cout << "  ID: " << id << endl;
+            cout << "  Name: " << name << endl;
+            cout << "  Type: " << (typeChoice == 1 ? "Electronics" : "Grocery") << endl;
+        }
+    } catch (const exception& e) {
+        cerr << "\nError adding item: " << e.what() << endl;
+        if (newItem != nullptr) {
+            delete newItem;
+        }
     }
-
-    invSys.addItem(newItem);
-    cout << "\nItem added successfully! ID: " << id << endl;
+    
+    // Pause before returning to menu
+    cout << "\nPress Enter to continue...";
+    cin.ignore(numeric_limits<streamsize>::max(), '\n');
 }
 
 // Function to update stock
 void updateStock(InventorySystem& invSys) {
-    cout << "\n=== UPDATE STOCK ===" << endl;
-    int id, amount;
+    cout << "\n" << string(30, '=') << endl;
+    cout << "      UPDATE STOCK" << endl;
+    cout << string(30, '=') << endl;
+    
+    // First show current inventory so user can see IDs
+    cout << "\nCurrent Inventory:" << endl;
+    invSys.displayInventory();
+    
+    // Get item ID
+    int id = getPositiveNumber<int>("\nEnter item ID to update: ");
+    
+    // Get action (add/remove)
     char action;
-
-    cout << "Enter item ID: ";
-    while (!(cin >> id) || id < 1) {
-        cout << "Invalid ID. Please enter a positive number: ";
+    while (true) {
+        cout << "Add (A) or remove (R) stock? (A/R): ";
+        cin >> action;
+        action = toupper(action);
+        if (action == 'A' || action == 'R') break;
+        cout << "Invalid choice. Please enter 'A' to add or 'R' to remove.\n";
         clearInput();
     }
     clearInput();
-
-    cout << "Add (A) or remove (R) stock? (A/R): ";
-    while (!(cin >> action) || (toupper(action) != 'A' && toupper(action) != 'R')) {
-        cout << "Invalid choice. Please enter 'A' to add or 'R' to remove: ";
-        clearInput();
-    }
-    clearInput();
-
-    cout << "Enter quantity to " << (toupper(action) == 'A' ? "add" : "remove") << ": ";
-    while (!(cin >> amount) || amount <= 0) {
-        cout << "Invalid amount. Please enter a positive number: ";
-        clearInput();
-    }
-    clearInput();
-
-    if (toupper(action) == 'R') {
+    
+    // Get amount
+    string actionText = (action == 'A') ? "add" : "remove";
+    int amount = getPositiveNumber<int>("Enter quantity to " + actionText + ": ");
+    
+    if (action == 'R') {
         amount = -amount; // Make amount negative for removal
     }
-
-    if (invSys.updateStock(id, amount)) {
-        cout << "\nStock updated successfully!" << endl;
-    } else {
-        cout << "\nError: Item with ID " << id << " not found." << endl;
-    }
+    
+    // Update stock
+    invSys.updateStock(id, amount);
 }
 
 // Function to remove an item
 void removeItem(InventorySystem& invSys) {
-    cout << "\n=== REMOVE ITEM ===" << endl;
-    int id;
-
-    cout << "Enter item ID to remove: ";
-    while (!(cin >> id) || id < 1) {
-        cout << "Invalid ID. Please enter a positive number: ";
-        clearInput();
-    }
-    clearInput();
-
-    if (invSys.removeItem(id)) {
-        cout << "\nItem with ID " << id << " has been removed." << endl;
+    cout << "\n" << string(30, '=') << endl;
+    cout << "      REMOVE ITEM" << endl;
+    cout << string(30, '=') << endl;
+    
+    // First show current inventory so user can see IDs
+    cout << "\nCurrent Inventory:" << endl;
+    invSys.displayInventory();
+    
+    // Get item ID
+    int id = getPositiveNumber<int>("\nEnter item ID to remove: ");
+    
+    // Confirm deletion
+    if (getYesNo("Are you sure you want to remove this item?")) {
+        invSys.removeItem(id);
     } else {
-        cout << "\nError: Item with ID " << id << " not found." << endl;
+        cout << "\nOperation cancelled." << endl;
     }
 }
 
 // Main function
 int main() {
+    // Set console output to show 2 decimal places for currency
+    cout << fixed << setprecision(2);
+    
+    // Create inventory system
     InventorySystem inventorySystem;
-    int choice;
-
-    cout << "========================================" << endl;
+    
+    cout << string(50, '=') << endl;
     cout << "   INVENTORY MANAGEMENT SYSTEM" << endl;
-    cout << "========================================" << endl;
-
+    cout << "   Version 1.0" << endl;
+    cout << string(50, '=') << endl;
+    
+    // Check if inventory was loaded
+    cout << "\nType 'help' at any time to see available commands.\n";
+    
+    // Main loop
+    int choice;
     do {
-        displayMenu();
+        try {
+            choice = displayMenu();
+            
+            switch (choice) {
+                case 1:
+                    addNewItem(inventorySystem);
+                    break;
+                    
+                case 2:
+                    updateStock(inventorySystem);
+                    break;
+                    
+                case 3:
+                    removeItem(inventorySystem);
+                    break;
+                    
+                case 4:
+                    inventorySystem.displayInventory();
+                    cout << "\nPress Enter to continue...";
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    break;
+                    
+                case 5: {
+                    int threshold = getPositiveNumber<int>("\nEnter low stock threshold (default 5): ");
+                    inventorySystem.generateLowStockReport(threshold);
+                    cout << "\nPress Enter to continue...";
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+                    break;
+                }
+                
+                case 6:
+                    if (getYesNo("\nAre you sure you want to exit?")) {
+                        cout << "\nThank you for using the Inventory Management System. Goodbye!" << endl;
+                    } else {
+                        choice = 0; // Stay in the menu
+                    }
+                    break;
+            }
+        } catch (const exception& e) {
+            cerr << "\nError: " << e.what() << endl;
+            cout << "Press Enter to continue...";
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        }
         
-        while (!(cin >> choice) || choice < 1 || choice > 6) {
-            cout << "Invalid choice. Please enter a number between 1 and 6: ";
-            clearInput();
-        }
-        clearInput();
-
-        switch (choice) {
-            case 1:
-                addNewItem(inventorySystem);
-                break;
-            case 2:
-                updateStock(inventorySystem);
-                break;
-            case 3:
-                removeItem(inventorySystem);
-                break;
-            case 4:
-                inventorySystem.displayInventory();
-                break;
-            case 5:
-                inventorySystem.generateLowStockReport();
-                break;
-            case 6:
-                cout << "\nThank you for using the Inventory Management System. Goodbye!" << endl;
-                break;
-        }
-
-        if (choice != 6) {
-            cout << "\nPress Enter to continue...";
-            cin.ignore();
-        }
-
     } while (choice != 6);
 
     return 0;
