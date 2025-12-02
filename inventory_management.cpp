@@ -523,6 +523,7 @@ void addNewItem(InventorySystem& invSys) {
     // Pause before returning to menu
     cout << "\nPress Enter to continue...";
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    }
 }
 
 // Function to update stock
