@@ -1,3 +1,6 @@
+// Inventory management system 
+// Banaeko: 2025/03/12
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -9,308 +12,333 @@
 
 using namespace std;
 
-// Simple structure to hold item details
+// Euta saman (item) ko details rakhne struct
 struct Item {
-    int id;
-    string name;
-    int quantity;
-    double price;
-    string category;  // could be more specific if needed
+    int id;            // Unique ID number
+    string name;       // Saman ko naam
+    int quantity;      // Kati ota cha stock ma
+    double price;      // Euta ko price
+    string category;   // Kasto type ko saman ho
 
-    Item(int _id, string _name, int _qty, double _price, string _cat = "General") 
-        : id(_id), name(_name), quantity(_qty), price(_price), category(_cat) {}
+    // Naya saman thapne constructor
+    Item(int itemId, string itemName, int qty, double itemPrice, string cat = "General") 
+        : id(itemId), name(itemName), quantity(qty), price(itemPrice), category(cat) {}
 };
 
+// Saman haru lai manage garne class
 class Inventory {
 private:
-    vector<Item> items;
-    int nextId = 1;  // simple auto-increment
+    vector<Item> items;  // Sabai saman haru yaha store huncha
+    int nextId = 1;      // Aarko naya ID k hune bhanera track garcha
     
-    // Helper to find item by ID
+    // ID accordingly saman khojne, payena bhane end() return garcha
     vector<Item>::iterator findItem(int id) {
         return find_if(items.begin(), items.end(), 
-            [id](const Item& i) { return i.id == id; });
+            [id](const Item& i) { 
+                return i.id == id; 
+            });
     }
 
 public:
-    // Add new item to inventory
+    // Naya saman inventory ma thapne function
     void addItem(string name, int qty, double price, string cat = "General") {
-        // Quick validation
+        // Negative quantity ra price check garcha
         if (qty < 0 || price < 0) {
-            cout << "Error: Quantity and price must be non-negative\n";
+            cout << "Error: Can't have negative quantities or prices!\n";
             return;
         }
         
-        // Check for existing item with same name
-        auto it = find_if(items.begin(), items.end(), 
-            [&name](const Item& i) { return i.name == name; });
+        // Pahila nai yo item cha ki check garcha (naam herera)
+        auto existing = find_if(items.begin(), items.end(), 
+            [&name](const Item& i) { 
+                return i.name == name; 
+            });
             
-        if (it != items.end()) {
-            cout << "Item already exists! Updating instead...\n";
-            it->quantity += qty;
+        if (existing != items.end()) {
+            // Pahila nai cha, quantity matra update garcha
+            cout << "Found existing item - adding to stock...\n";
+            existing->quantity += qty;
             return;
         }
         
-        items.emplace_back(nextId++, name, qty, price, cat);
-        cout << "Added: " << name << " (ID: " << nextId-1 << ")\n";
+        // Naya ID diyera naya saman thapcha
+        int newId = nextId++;
+        items.emplace_back(newId, name, qty, price, cat);
+        cout << "Added new item: " << name << " (ID: " << newId << ")\n";
     }
 
-    // Remove item by ID
+    // ID diyera saman hataune
     void removeItem(int id) {
-        auto it = findItem(id);
-        if (it != items.end()) {
-            string name = it->name;
-            items.erase(it);
-            cout << "Removed: " << name << "\n";
+        auto itemToRemove = findItem(id);
+        if (itemToRemove != items.end()) {
+            string itemName = itemToRemove->name;
+            items.erase(itemToRemove);
+            cout << "Successfully removed: " << itemName << "\n";
         } else {
-            cout << "Item not found!\n";
+            cout << "Oops! Couldn't find an item with ID " << id << "\n";
         }
     }
 
-    // Update item quantity
-    void updateStock(int id, int delta) {
-        auto it = findItem(id);
-        if (it != items.end()) {
-            it->quantity += delta;
-            if (it->quantity < 0) {
-                cout << "Warning: Negative stock detected for " << it->name << endl;
-                // Could add more handling here
+    // Stock ko quantity update garna
+    void updateStock(int itemId, int amount) {
+        auto item = findItem(itemId);
+        if (item != items.end()) {
+            item->quantity += amount;
+            
+            // Stock negative bhayeko kura user lai inform garcha
+            if (item->quantity < 0) {
+                cout << "Warning: " << item->name << " now has negative stock! (" 
+                     << item->quantity << ")\n";
             }
         } else {
-            cout << "Item not found!\n";
+            cout << "Couldn't find item with ID " << itemId << "\n";
         }
     }
 
-    // Display inventory
+    // Sabai saman haru dekhaune function
     void listItems() const {
         if (items.empty()) {
-            cout << "Inventory is empty!\n";
+            cout << "The inventory is currently empty.\n";
             return;
         }
 
-        cout << "\n===== INVENTORY =====\n";
-        cout << left << setw(5) << "ID" 
-             << setw(20) << "Name" 
-             << setw(10) << "Quantity" 
-             << setw(10) << "Price" 
-             << "Category\n";
+        // print the heading
+        cout << "\n=== CURRENT INVENTORY ===\n";
+        cout << left << setw(6) << "ID" 
+             << setw(25) << "PRODUCT NAME" 
+             << setw(12) << "QUANTITY" 
+             << setw(12) << "PRICE" 
+             << "CATEGORY\n";
         cout << string(60, '-') << "\n";
         
+        // Sabai saman haru dekhaucha
         for (const auto& item : items) {
-            cout << left << setw(5) << item.id
-                 << setw(20) << item.name
-                 << setw(10) << item.quantity
-                 << "$" << fixed << setprecision(2) << item.price
-                 << "  " << item.category << "\n";
+            cout << left << setw(6) << item.id
+                 << setw(25) << (item.name.length() > 22 ? item.name.substr(0, 19) + "..." : item.name)
+                 << setw(12) << item.quantity
+                 << "$" << fixed << setprecision(2) << setw(10) << item.price
+                 << item.category << "\n";
         }
-        cout << "=====================\n\n";
+        cout << string(60, '=') << "\n\n";
     }
 
-    // Helper function for case-insensitive string search
-    bool containsIgnoreCase(string str, const string& search) {
-        // Convert both strings to lowercase
-        transform(str.begin(), str.end(), str.begin(), ::tolower);
-        string searchLower = search;
-        transform(searchLower.begin(), searchLower.end(), searchLower.begin(), ::tolower);
+    // Euta string arko string ma cha ki check garcha (capital small farak gardaina)
+    bool containsIgnoreCase(string text, const string& searchTerm) {
+        // Donai string lai lowercase ma convert garcha
+        transform(text.begin(), text.end(), text.begin(), ::tolower);
+        string lowerSearch = searchTerm;
+        transform(lowerSearch.begin(), lowerSearch.end(), lowerSearch.begin(), ::tolower);
         
-        // Simple substring search
-        return str.find(searchLower) != string::npos;
+        return text.find(lowerSearch) != string::npos;
     }
 
-    // Check if inventory is empty
+    // Inventory khali cha ki chaina check garcha
     bool isEmpty() const {
         return items.empty();
     }
 
-    // Enhanced search functionality
-    void searchItem(const string& query) {
-        if (query.empty()) {
-            cout << "\nPlease enter a search term.\n";
+    // Saman haru khojne function (naam, category, or ID le)
+    void searchItem(const string& searchTerm) {
+        if (searchTerm.empty()) {
+            cout << "\nPlease enter something to search for.\n";
             return;
         }
 
-        vector<Item> results;
-        string queryLower = query;
-        transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
+        vector<Item> matches;
         
-        // Search in all relevant fields
+        // ID le khojnu pareko ho ki check garcha
+        bool isIdSearch = !searchTerm.empty() && all_of(searchTerm.begin(), searchTerm.end(), ::isdigit);
+        
+        // Sabai saman haru ma loop chalau
         for (const auto& item : items) {
-            string idStr = to_string(item.id);
-            string nameLower = item.name;
-            string catLower = item.category;
+            // ID le khojnu pareko bhane tyo check garcha
+            if (isIdSearch && to_string(item.id) == searchTerm) {
+                matches.push_back(item);
+                continue;
+            }
             
-            transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-            transform(catLower.begin(), catLower.end(), catLower.begin(), ::tolower);
-            
-            if (containsIgnoreCase(item.name, query) ||
-                containsIgnoreCase(item.category, query) ||
-                idStr.find(query) != string::npos) {
-                results.push_back(item);
+            // Name ra category ma khojcha
+            if (containsIgnoreCase(item.name, searchTerm) || 
+                containsIgnoreCase(item.category, searchTerm)) {
+                matches.push_back(item);
             }
         }
 
-        // Display results
-        if (!results.empty()) {
-            cout << "\n===== SEARCH RESULTS =====";
-            cout << "\nFound " << results.size() << " matching item" << (results.size() != 1 ? "s" : "") << "\n";
-            
-            for (const auto& item : results) {
-                cout << "\nID: " << item.id
-                     << "\nName: " << item.name
-                     << "\nCategory: " << item.category
-                     << "\nQuantity: " << item.quantity
-                     << "\nPrice: $" << fixed << setprecision(2) << item.price
-                     << "\n" << string(30, '-') << "\n";
-            }
-        } else {
-            cout << "\nNo items found matching '\033[1m" << query << "\033[0m'\n";
-            cout << "Tip: Try searching by name, category, or ID\n";
+        // Kati ota payeo bhanera dekhaucha
+        if (matches.empty()) {
+            cout << "\nNo matches found for '" << searchTerm << "'\n";
+            cout << "Try searching by product name, category, or ID\n";
+            return;
+        }
+        
+        cout << "\n=== SEARCH RESULTS (" << matches.size() << " found) ===\n";
+        for (const auto& item : matches) {
+            cout << "\nID: " << item.id
+                 << "\nName: " << item.name
+                 << "\nCategory: " << item.category
+                 << "\nIn stock: " << item.quantity
+                 << "\nPrice: $" << fixed << setprecision(2) << item.price
+                 << "\n" << string(30, '-') << "\n";
         }
     }
 };
 
-// Clear screen function for better UX
+// Screen clear garne function
 void clearScreen() {
-    #ifdef _WIN32
-        system("cls");
-    #else
-        system("clear");
-    #endif
+        system("cls");     // For Windows
+  
 }
 
-// Get integer input with validation
+// User bata number lini with validation
 int getIntegerInput(const string& prompt, int min = INT_MIN, int max = INT_MAX) {
-    int value;
+    int num;
     while (true) {
         cout << prompt;
-        if (cin >> value) {
-            if (value >= min && value <= max) {
+        
+        if (cin >> num) {
+            // Range ma cha ki check garcha
+            if (num >= min && num <= max) {
                 cin.ignore(numeric_limits<streamsize>::max(), '\n');
-                return value;
+                return num;
             }
-            cout << "Please enter a value between " << min << " and " << max << ".\n";
+            cout << "Please enter a number between " << min << " and " << max << ".\n";
         } else {
-            cout << "Invalid input. Please enter a valid number.\n";
+            // wrong input diyo bhane
+            cout << "That's not a valid number. Try again.\n";
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
     }
 }
 
-// Get double input with validation
+// User bata decimal number lini
 double getDoubleInput(const string& prompt, double min = 0.0) {
-    double value;
+    double num;
     while (true) {
         cout << prompt;
-        if (cin >> value) {
-            if (value >= min) {
+        
+        if (cin >> num) {
+            if (num >= min) {
                 cin.ignore(numeric_limits<streamsize>::max(), '\n');
-                return value;
+                return num;
             }
-            cout << "Please enter a value greater than or equal to " << min << ".\n";
+            cout << "Please enter at least " << min << ".\n";
         } else {
-            cout << "Invalid input. Please enter a valid number.\n";
+            cout << "Please enter a valid number.\n";
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
     }
 }
 
-// Get string input with validation
-string getStringInput(const string& prompt, bool allowEmpty = false) {
+// User bata text input lini
+string getStringInput(const string& prompt, bool canBeEmpty = false) {
     string input;
+    
     while (true) {
         cout << prompt;
         getline(cin, input);
         
-        // Trim whitespace
-        input.erase(0, input.find_first_not_of(" \t\n\r\f\v"));
-        input.erase(input.find_last_not_of(" \t\n\r\f\v") + 1);
+        // Input lai clean garcha
+        input.erase(0, input.find_first_not_of(" \t\n\r\f\v"));  // Trim left
+        input.erase(input.find_last_not_of(" \t\n\r\f\v") + 1);  // Trim right
         
-        if (!input.empty() || allowEmpty) {
+        if (!input.empty() || canBeEmpty) {
             return input;
         }
-        cout << "This field cannot be empty. Please try again.\n";
+        
+        cout << "You need to enter something!\n";
     }
 }
 
-// Display the main menu
+// Menu dekhaune ra user ko selection line
 int showMainMenu() {
     clearScreen();
-    cout << "\n       INVENTORY MANAGEMENT SYSTEM\n";
-    cout << "       ----------------------\n\n";
-    cout << "1. Add new item\n";
-    cout << "2. Remove item\n";
-    cout << "3. Update stock\n";
-    cout << "4. View all items\n";
-    cout << "5. Search items\n";
-    cout << "6. Exit\n";
     
-    return getIntegerInput("\nEnter your choice (1-6): ", 1, 6);
+    // Menu ko options haru print garcha
+    cout << "\n=== INVENTORY MANAGEMENT ===\n\n"
+         << "1. Add a new item\n"
+         << "2. Remove an item\n"
+         << "3. Update stock level\n"
+         << "4. View all items\n"
+         << "5. Search for items\n"
+         << "6. Exit\n\n";
+    
+    // User le select gareko option return garcha
+    return getIntegerInput("Enter your choice (1-6): ", 1, 6);
 }
 
 int main() {
-    Inventory inv;
-    bool running = true;
+    // Create our inventory system
+    Inventory inventory;
+    bool keepRunning = true;
     
-    // Add some sample data
-    inv.addItem("Laptop", 10, 999.99, "Electronics");
-    inv.addItem("Wireless Mouse", 50, 24.99, "Accessories");
-    inv.addItem("Mechanical Keyboard", 25, 89.99, "Accessories");
-    inv.addItem("Monitor 24\"", 15, 199.99, "Electronics");
+    // Add some sample items to start with
+    inventory.addItem("Laptop", 5, 1299.99, "Electronics");
+    inventory.addItem("Wireless Mouse", 10, 29.99, "Accessories");
+    inventory.addItem("Mechanical Keyboard", 8, 89.99, "Accessories");
+    inventory.addItem("27\" 4K Monitor", 3, 349.99, "Monitors");
     
-    cout << "Welcome to the Inventory Management System!\n";
-    cout << "Managing your inventory made simple and efficient.\n\n";
-    cout << "Press Enter to continue...";
+    // Welcome message
+    cout << "=== WELCOME TO INVENTORY MANAGER ===\n";
+    cout << "Your one-stop solution for inventory tracking!\n\n";
+    cout << "Press Enter to begin...";
     cin.ignore();
     
-    while (running) {
+    // Main program loop
+    while (keepRunning) {
         int choice = showMainMenu();
         
         switch (choice) {
-            case 1: {  // Add new item
+            case 1: {  // Add item
                 clearScreen();
-                cout << "\n        ADD NEW ITEM\n";
-                cout << "        ------------\n\n";
+                cout << "\n--- ADD NEW ITEM ---\n\n";
                 
-                string name = getStringInput("Item name: ");
+                // Saman ko details haru soddha
+                string name = getStringInput("What's the item called? ");
                 string category = getStringInput("Category (press Enter for 'General'): ", true);
                 if (category.empty()) category = "General";
                 
-                int quantity = getIntegerInput("Quantity: ", 0);
-                double price = getDoubleInput("Price per unit: $", 0.0);
+                int qty = getIntegerInput("How many do you have? ", 0);
+                double price = getDoubleInput("Price per item: $");
                 
-                // Confirm before adding
-                cout << "\nAdd this item to inventory?\n";
+                // Confirm garna lai details dekhaucha
+                cout << "\nAdd this item?\n";
                 cout << "Name:     " << name << "\n";
                 cout << "Category: " << category << "\n";
-                cout << "Quantity: " << quantity << "\n";
+                cout << "Quantity: " << qty << "\n";
                 cout << "Price:    $" << fixed << setprecision(2) << price << "\n\n";
                 
-                string confirm = getStringInput("Confirm (y/n)? ");
+                string confirm = getStringInput("Add to inventory? (y/n) ");
                 if (!confirm.empty() && tolower(confirm[0]) == 'y') {
-                    inv.addItem(name, quantity, price, category);
-                    cout << "\nItem added successfully!\n";
+                    inventory.addItem(name, qty, price, category);
+                    cout << "\n✓ Item added!\n";
                 } else {
-                    cout << "\nItem addition cancelled.\n";
+                    cout << "\n✗ Cancelled.\n";
                 }
+                
+                cout << "\nPress Enter to continue...";
+                cin.ignore();
                 break;
             }
+            
             case 2: {  // Remove item
                 clearScreen();
-                cout << "\n        REMOVE ITEM\n";
-                cout << "        ------------\n\n";
-                inv.listItems();
+                cout << "\n--- REMOVE ITEM ---\n\n";
                 
-                if (!inv.isEmpty()) {
+                if (inventory.isEmpty()) {
+                    cout << "The inventory is empty!\n";
+                } else {
+                    cout << "Current inventory:\n";
+                    inventory.listItems();
+                    
                     int id = getIntegerInput("\nEnter ID of item to remove (0 to cancel): ", 0);
                     if (id != 0) {
-                        string confirm = getStringInput("Are you sure you want to remove this item? (y/n): ");
-                        if (tolower(confirm[0]) == 'y') {
-                            inv.removeItem(id);
-                            cout << "\nItem removed successfully!\n";
+                        string confirm = getStringInput("Are you sure? This can't be undone! (y/n) ");
+                        if (!confirm.empty() && tolower(confirm[0]) == 'y') {
+                            inventory.removeItem(id);
                         } else {
-                            cout << "\nItem removal cancelled.\n";
+                            cout << "\nPhew! Item was not removed.\n";
                         }
                     }
                 }
@@ -319,18 +347,23 @@ int main() {
                 cin.ignore();
                 break;
             }
+            
             case 3: {  // Update stock
                 clearScreen();
-                cout << "\n        UPDATE STOCK\n";
-                cout << "        ------------\n\n";
-                inv.listItems();
+                cout << "\n--- UPDATE STOCK LEVEL ---\n\n";
                 
-                if (!inv.isEmpty()) {
-                    int id = getIntegerInput("\nEnter item ID to update (0 to cancel): ", 0);
+                if (inventory.isEmpty()) {
+                    cout << "No items in inventory yet!\n";
+                } else {
+                    cout << "Current inventory:\n";
+                    inventory.listItems();
+                    
+                    int id = getIntegerInput("\nWhich item ID to update? (0 to cancel) ", 0);
                     if (id != 0) {
-                        int delta = getIntegerInput("Enter quantity to add (use negative to remove): ");
-                        inv.updateStock(id, delta);
-                        cout << "\nStock updated successfully!\n";
+                        cout << "\nEnter positive number to add stock, negative to remove\n";
+                        int change = getIntegerInput("How many to add/remove? ");
+                        inventory.updateStock(id, change);
+                        cout << "\n✓ Stock updated!\n";
                     }
                 }
                 
@@ -338,26 +371,26 @@ int main() {
                 cin.ignore();
                 break;
             }
+            
             case 4:  // View all items
                 clearScreen();
-                cout << "\n        INVENTORY OVERVIEW\n";
-                cout << "        ----------------\n\n";
-                inv.listItems();
-                cout << "Press Enter to continue...";
+                cout << "\n--- FULL INVENTORY ---\n\n";
+                inventory.listItems();
+                cout << "Press Enter to go back...";
                 cin.ignore();
                 break;
                 
-            case 5: {  // Search items
+            case 5: {  // Search
                 clearScreen();
-                cout << "\n        SEARCH INVENTORY\n";
-                cout << "        ----------------\n\n";
+                cout << "\n--- SEARCH INVENTORY ---\n\n";
+                
                 string query = getStringInput("Search by name, category, or ID: ", true);
                 if (!query.empty()) {
                     clearScreen();
-                    cout << "\n        SEARCH RESULTS\n";
-                    cout << "        --------------\n\n";
-                    inv.searchItem(query);
+                    cout << "\n--- SEARCH RESULTS ---\n\n";
+                    inventory.searchItem(query);
                 }
+                
                 cout << "\nPress Enter to continue...";
                 cin.ignore();
                 break;
@@ -365,15 +398,14 @@ int main() {
             
             case 6:  // Exit
                 clearScreen();
-                cout << "\n        GOODBYE!\n";
-                cout << "        -------\n\n";
-                cout << "Thank you for using the Inventory Management System.\n";
+                cout << "\n=== THANKS FOR USING INVENTORY MANAGER! ===\n\n";
+                cout << "Your inventory has been saved.\n";
                 cout << "Have a great day!\n\n";
-                running = false;
+                keepRunning = false;
                 break;
                 
             default:
-                cout << "\nInvalid choice. Please try again.\n";
+                cout << "\nHmm, that's not a valid option. Try again!\n";
                 cout << "Press Enter to continue...";
                 cin.ignore();
         }
